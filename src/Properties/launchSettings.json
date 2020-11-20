@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "NugetUtility": {
+      "commandName": "Project",
+      "commandLineArgs": "-u -o -i .",
+      "workingDirectory": "C:\\dev\\di\\dac6\\server"
+    }
+  }
+}

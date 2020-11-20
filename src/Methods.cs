@@ -120,7 +120,10 @@ namespace NugetUtility
                             }
                             else
                             {
-                                licenses.Add(packageWithVersion, new Package { Metadata = new Metadata { Version = versionNumber, Id = packageId } });
+                                if (!licenses.ContainsKey(packageWithVersion))
+                                {
+                                    licenses.Add(packageWithVersion, new Package { Metadata = new Metadata { Version = versionNumber, Id = packageId } });
+                                }
                             }
 
                             continue;
@@ -344,6 +347,18 @@ namespace NugetUtility
                                                             a => a.LicenseUrl ?? "---"), logLevel: LogLevel.Always);
         }
 
+        public void PrintLicenses2(List<LibraryInfo> libraries)
+        {
+            if (libraries is null) { throw new ArgumentNullException(nameof(libraries)); }
+            if (!libraries.Any()) { return; }
+
+            WriteOutput(libraries.ToStringTable(new[] { "Reference", "Version", "Licence Type", "License" },
+                a => a.PackageName ?? "---",
+                a => a.PackageVersion ?? "---",
+                a => a.LicenseType ?? "---",
+                a => a.LicenseUrl ?? "---"), logLevel: LogLevel.Always);
+        }
+
         public void SaveAsJson(List<LibraryInfo> libraries)
         {
             if (!libraries.Any() || !_packageOptions.JsonOutput) { return; }
@@ -358,6 +373,25 @@ namespace NugetUtility
                 streamWriter.Write(JsonConvert.SerializeObject(libraries, jsonSettings));
                 streamWriter.Flush();
             }
+        }
+
+        public void SaveAsTextFile2(List<LibraryInfo> libraries)
+        {
+            if (!libraries.Any() || !_packageOptions.TextOutput) { return; }
+            StringBuilder sb = new StringBuilder(256);
+            foreach (var lib in libraries)
+            {
+                sb.Append(lib.PackageName);
+                sb.Append("@");
+                sb.Append(lib.PackageVersion);
+                sb.Append(";");
+                sb.Append(lib.LicenseType);
+                sb.Append(";");
+                sb.Append(lib.LicenseUrl);
+                sb.AppendLine();
+            }
+
+            File.WriteAllText(GetOutputFilename("licences.txt"), sb.ToString());
         }
 
         public void SaveAsTextFile(List<LibraryInfo> libraries)

@@ -50,7 +50,7 @@ namespace NugetUtility
                 }
                 else
                 {
-                    methods.SaveAsTextFile(mappedLibraryInfo);
+                    methods.SaveAsTextFile2(mappedLibraryInfo);
                 }
 
                 return 0;
