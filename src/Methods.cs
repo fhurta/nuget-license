@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -167,24 +168,47 @@ namespace NugetUtility
 
         private async Task AddTransitivePackages(string project, PackageList licenses, Package result)
         {
-            var groups = result.Metadata?.Dependencies?.Group;
-            if (_packageOptions.IncludeTransitive && groups != null)
+            if (!_packageOptions.IncludeTransitive)
             {
-                foreach (var group in groups)
-                {
-                    var dependant =
-                        group
-                            .Dependency
-                            .Select(e => $"{e.Id},{e.Version}")
-                            .Where(e => !licenses.Keys.Contains(e));
+                return;
+            }
 
-                    var dependantPackages = await GetNugetInformationAsync(project, dependant);
-                    foreach (var dependantPackage in dependantPackages)
+            var groupsAll = result.Metadata?.Dependencies?.Group;
+
+            if (groupsAll == null || groupsAll.Count == 0)
+            {
+                return;
+            }
+
+            //only netcore if there is any
+            var regex = new Regex(@"core", RegexOptions.IgnoreCase);
+            var groups = groupsAll.Where(o => regex.IsMatch(o.TargetFramework)).ToList();
+            if (groups.Count == 0)
+            {
+                //if not netcore then netstandard
+                regex = new Regex(@"standard", RegexOptions.IgnoreCase);
+                groups = groupsAll.Where(o => regex.IsMatch(o.TargetFramework)).ToList();
+            }
+
+            if (groups.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var group in groups)
+            {
+                var dependant =
+                    group
+                        .Dependency
+                        .Select(e => $"{e.Id},{e.Version}")
+                        .Where(e => !licenses.Keys.Contains(e));
+
+                var dependantPackages = await GetNugetInformationAsync(project, dependant);
+                foreach (var dependantPackage in dependantPackages)
+                {
+                    if (!licenses.ContainsKey(dependantPackage.Key))
                     {
-                        if (!licenses.ContainsKey(dependantPackage.Key))
-                        {
-                            licenses.Add(dependantPackage.Key, dependantPackage.Value);
-                        }
+                        licenses.Add(dependantPackage.Key, dependantPackage.Value);
                     }
                 }
             }
@@ -375,8 +399,14 @@ namespace NugetUtility
             }
         }
 
-        public void SaveAsTextFile2(List<LibraryInfo> libraries)
+        public void SaveAsTextFile2(List<LibraryInfo> allLibraries)
         {
+            //only take the newest versions
+            var comparer = new VersionComparer();
+            var libraries = allLibraries.GroupBy(o => o.PackageName)
+                .SelectMany(g => g.OrderByDescending(o => o.PackageVersion, comparer).Take(1))
+                .ToList();
+
             if (!libraries.Any() || !_packageOptions.TextOutput) { return; }
             StringBuilder sb = new StringBuilder(256);
             foreach (var lib in libraries)
@@ -392,6 +422,43 @@ namespace NugetUtility
             }
 
             File.WriteAllText(GetOutputFilename("licences.txt"), sb.ToString());
+        }
+
+        private class VersionComparer : IComparer<string>
+        {
+            public int Compare(string x, string y)
+            {
+                //in nuspec there is sometime version interval like "[4.1.7"
+                // then use just 4.1.7 for comparision
+                // when comparing "[4.1" to "4.1", consider "4.1" as greater value
+
+                var xBracket = false;
+                var yBracket = false;
+
+                if (x.StartsWith("["))
+                {
+                    xBracket = true;
+                    x = x.Substring(1);
+                }
+                if (y.StartsWith("["))
+                {
+                    yBracket = true;
+                    y = y.Substring(1);
+                }
+
+                var res = string.Compare(x, y);
+                if (res != 0)
+                {
+                    return res;
+                }
+
+                if (xBracket == yBracket)
+                {
+                    return 0;
+                }
+
+                return xBracket ? -1 : 1;
+            }
         }
 
         public void SaveAsTextFile(List<LibraryInfo> libraries)
